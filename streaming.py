@@ -3,6 +3,8 @@ import sys
 import MySQLdb as mdb
 import json
 import requests
+import datetime
+import time
 
 # conn = mdb.connect("MutouMan.mysql.pythonanywhere-services.com", "MutouMan", "011105xy", "MutouMan$MutouMan")
 
@@ -41,13 +43,19 @@ class CustomStreamListener(tweepy.StreamListener):
                 url = requests.get(content).url
                 if "swarm" in url:
                   fs_id = url.split("/")[-1]
-            url = 'https://api.foursquare.com/v2/checkins/resolve?shortId=%s&oauth_token=KHF3PUO3QPDRRPL1H44KIKV4PKYDKN3WAKGX3Y3X30W1O1Y0&v=20160901' %fs_id
+            # Update the auth_token
+            today = datetime.date.today()
+            today = str(today).translate(None, '-')
+            # print today
+            url = 'https://api.foursquare.com/v2/checkins/resolve?shortId=%s&oauth_token=KHF3PUO3QPDRRPL1H44KIKV4PKYDKN3WAKGX3Y3X30W1O1Y0&v=%s' %(fs_id, today)
             raw = requests.get(url).text
             data = json.loads(raw)
           # print type(data)
           # print data
           # print data["response"]["checkin"]["user"]
           # print data
+
+            #Some times the data is not complete, but lastName, city and country are the most frequently absent data
             try:
                 user = {
                     "user_id":data["response"]["checkin"]["user"]["id"],
@@ -56,15 +64,16 @@ class CustomStreamListener(tweepy.StreamListener):
                     "gender":data["response"]["checkin"]["user"]["gender"],
                     "venue_id": data["response"]["checkin"]["venue"]["id"]
                 }
-            except:
-                Exception
-                user = {
-                  "user_id":data["response"]["checkin"]["user"]["id"],
-                  "first_name":data["response"]["checkin"]["user"]["firstName"],
-                  # "last_name":data["response"]["checkin"]["user"]["lastName"],
-                  "gender":data["response"]["checkin"]["user"]["gender"],
-                  "venue_id": data["response"]["checkin"]["venue"]["id"]
-                }
+            except Exception, e:
+                if "checkin" not in str(e):
+                    if "lastName" in str(e):
+                        user = {
+                          "user_id":data["response"]["checkin"]["user"]["id"],
+                          "first_name":data["response"]["checkin"]["user"]["firstName"],
+                          # "last_name":data["response"]["checkin"]["user"]["lastName"],
+                          "gender":data["response"]["checkin"]["user"]["gender"],
+                          "venue_id": data["response"]["checkin"]["venue"]["id"]
+                        }
             print user.items()
             # user_cols = ', '.join(str(v) for v in user.keys())
             # user_values = '"'+'","'.join(str(v) for v in user.values())+'"'
@@ -82,18 +91,30 @@ class CustomStreamListener(tweepy.StreamListener):
                   "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
                   "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
                 }
-            except:
-                Exception
-                venue = {
-                  "venue_id":data["response"]["checkin"]["venue"]["id"],
-                  "venue_name":data["response"]["checkin"]["venue"]["name"],
-                  "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
-                  "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
-                  # "city":data["response"]["checkin"]["venue"]["location"]["city"],
-                  "country":data["response"]["checkin"]["venue"]["location"]["country"],
-                  "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
-                  "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
-                }
+            except Exception, e:
+                if "checkin" not in str(e):
+                    if "city" in str(e):
+                        venue = {
+                          "venue_id":data["response"]["checkin"]["venue"]["id"],
+                          "venue_name":data["response"]["checkin"]["venue"]["name"],
+                          "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
+                          "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
+                          # "city":data["response"]["checkin"]["venue"]["location"]["city"],
+                          "country":data["response"]["checkin"]["venue"]["location"]["country"],
+                          "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
+                          "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
+                        }
+                    elif "country" in str(e):
+                        venue = {
+                          "venue_id":data["response"]["checkin"]["venue"]["id"],
+                          "venue_name":data["response"]["checkin"]["venue"]["name"],
+                          "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
+                          "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
+                          # "city":data["response"]["checkin"]["venue"]["location"]["city"],
+                          # "country":data["response"]["checkin"]["venue"]["location"]["country"],
+                          "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
+                          "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
+                        }
 
             print venue.items()
             # venue_cols = ', '.join(str(v) for v in venue.keys())
@@ -101,6 +122,9 @@ class CustomStreamListener(tweepy.StreamListener):
             # venue_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_venue', venue_cols, venue_values)
             # cursor.execute(venue_sql)
             # conn.commit()
+
+            # Avoid being blokced by foursquare
+            time.sleep(1)
             return True
         else:
             return True
