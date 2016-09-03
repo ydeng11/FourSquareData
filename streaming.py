@@ -5,17 +5,42 @@ import json
 import requests
 import datetime
 import time
+import sys
+reload(sys)  # Reload does the trick!
+sys.setdefaultencoding('utf-8')
+import logging
+import socket
 
-# conn = mdb.connect("MutouMan.mysql.pythonanywhere-services.com", "MutouMan", "011105xy", "MutouMan$MutouMan")
+lock_socket = None  # we want to keep the socket open until the very end of
+                    # our script so we use a global variable to avoid going
+                    # out of scope and being garbage-collected
 
-# cursor = conn.cursor()
-# # set mysql and page as 'utf-8'
-# conn.set_character_set('utf8')
-# cursor.execute('SET NAMES utf8;')
-# cursor.execute('SET CHARACTER SET utf8;')
-# cursor.execute('SET character_set_connection=utf8;')
-# # Go to http://dev.twitter.com and create an app.
-# # The consumer key and secret will be generated for you after
+def is_lock_free():
+    global lock_socket
+    lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        lock_id = "MutouMan.slr.py"   # this should be unique. using your username as a prefix is a convention
+        lock_socket.bind('\0' + lock_id)
+        logging.debug("Acquired lock %r" % (lock_id,))
+        return True
+    except socket.error:
+        # socket already locked, task must already be running
+        logging.info("Failed to acquire lock %r" % (lock_id,))
+        return False
+
+if not is_lock_free():
+    sys.exit()
+
+conn = mdb.connect("MutouMan.mysql.pythonanywhere-services.com", "MutouMan", "011105xy", "MutouMan$MutouMan")
+
+cursor = conn.cursor()
+# set mysql and page as 'utf-8'
+conn.set_character_set('utf8')
+cursor.execute('SET NAMES utf8;')
+cursor.execute('SET CHARACTER SET utf8;')
+cursor.execute('SET character_set_connection=utf8;')
+# Go to http://dev.twitter.com and create an app.
+# The consumer key and secret will be generated for you after
 consumer_key="fkMakaq1kx3aTCgpoXhXRBaHt"
 consumer_secret="cpJYL3LYSuRFpLoz98ptDy1FTt8Dif4onAsLolX9TIOGsFgbrA"
 
@@ -39,89 +64,91 @@ class CustomStreamListener(tweepy.StreamListener):
             tweet = all_data["text"]
             contents = tweet.split()
             for content in contents:
-              if content.startswith("https"):
-                url = requests.get(content).url
-                if "swarm" in url:
-                  fs_id = url.split("/")[-1]
-            # Update the auth_token
-            today = datetime.date.today()
-            today = str(today).translate(None, '-')
-            # print today
-            url = 'https://api.foursquare.com/v2/checkins/resolve?shortId=%s&oauth_token=KHF3PUO3QPDRRPL1H44KIKV4PKYDKN3WAKGX3Y3X30W1O1Y0&v=%s' %(fs_id, today)
-            raw = requests.get(url).text
-            data = json.loads(raw)
-          # print type(data)
-          # print data
-          # print data["response"]["checkin"]["user"]
-          # print data
+                if content.startswith("https"):
+                    url = requests.get(content).url
+                    if "swarm" in url:
+                        fs_id = url.split("/")[-1]
+                        correct = True
+            if correct:
+                # Update the auth_token
+                today = datetime.date.today()
+                today = str(today).translate(None, '-')
+                # print today
+                url = 'https://api.foursquare.com/v2/checkins/resolve?shortId=%s&oauth_token=KHF3PUO3QPDRRPL1H44KIKV4PKYDKN3WAKGX3Y3X30W1O1Y0&v=%s' %(fs_id, today)
+                raw = requests.get(url).text
+                data = json.loads(raw)
+              # print type(data)
+              # print data
+              # print data["response"]["checkin"]["user"]
+              # print data
 
-            #Some times the data is not complete, but lastName, city and country are the most frequently absent data
-            try:
-                user = {
-                    "user_id":data["response"]["checkin"]["user"]["id"],
-                    "first_name":data["response"]["checkin"]["user"]["firstName"],
-                    "last_name":data["response"]["checkin"]["user"]["lastName"],
-                    "gender":data["response"]["checkin"]["user"]["gender"],
-                    "venue_id": data["response"]["checkin"]["venue"]["id"]
-                }
-            except Exception, e:
-                if "checkin" not in str(e):
-                    if "lastName" in str(e):
-                        user = {
-                          "user_id":data["response"]["checkin"]["user"]["id"],
-                          "first_name":data["response"]["checkin"]["user"]["firstName"],
-                          # "last_name":data["response"]["checkin"]["user"]["lastName"],
-                          "gender":data["response"]["checkin"]["user"]["gender"],
-                          "venue_id": data["response"]["checkin"]["venue"]["id"]
-                        }
-            print user.items()
-            # user_cols = ', '.join(str(v) for v in user.keys())
-            # user_values = '"'+'","'.join(str(v) for v in user.values())+'"'
-            # user_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_user', user_cols, user_values)
-            # cursor.execute(user_sql)
-            # conn.commit()
-            try:
-                venue = {
-                  "venue_id":data["response"]["checkin"]["venue"]["id"],
-                  "venue_name":data["response"]["checkin"]["venue"]["name"],
-                  "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
-                  "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
-                  "city":data["response"]["checkin"]["venue"]["location"]["city"],
-                  "country":data["response"]["checkin"]["venue"]["location"]["country"],
-                  "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
-                  "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
-                }
-            except Exception, e:
-                if "checkin" not in str(e):
-                    if "city" in str(e):
-                        venue = {
-                          "venue_id":data["response"]["checkin"]["venue"]["id"],
-                          "venue_name":data["response"]["checkin"]["venue"]["name"],
-                          "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
-                          "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
-                          # "city":data["response"]["checkin"]["venue"]["location"]["city"],
-                          "country":data["response"]["checkin"]["venue"]["location"]["country"],
-                          "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
-                          "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
-                        }
-                    elif "country" in str(e):
-                        venue = {
-                          "venue_id":data["response"]["checkin"]["venue"]["id"],
-                          "venue_name":data["response"]["checkin"]["venue"]["name"],
-                          "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
-                          "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
-                          # "city":data["response"]["checkin"]["venue"]["location"]["city"],
-                          # "country":data["response"]["checkin"]["venue"]["location"]["country"],
-                          "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
-                          "checkinCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
-                        }
+                #Sometimes the data is not complete, but lastName, city and country are the most frequently absent data
+                try:
+                    user = {
+                        "user_id":data["response"]["checkin"]["user"]["id"],
+                        "first_name":data["response"]["checkin"]["user"]["firstName"],
+                        "last_name":data["response"]["checkin"]["user"]["lastName"],
+                        "gender":data["response"]["checkin"]["user"]["gender"],
+                        "venue_id": data["response"]["checkin"]["venue"]["id"]
+                    }
+                except Exception, e:
+                    if "checkin" not in str(e):
+                        if "lastName" in str(e):
+                            user = {
+                              "user_id":data["response"]["checkin"]["user"]["id"],
+                              "first_name":data["response"]["checkin"]["user"]["firstName"],
+                              # "last_name":data["response"]["checkin"]["user"]["lastName"],
+                              "gender":data["response"]["checkin"]["user"]["gender"],
+                              "venue_id": data["response"]["checkin"]["venue"]["id"]
+                            }
+                print user.items()
+                user_cols = ', '.join(str(v) for v in user.keys())
+                user_values = '"'+'","'.join(str(v) for v in user.values())+'"'
+                user_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_user', user_cols, user_values)
+                cursor.execute(user_sql)
+                conn.commit()
+                try:
+                    venue = {
+                      "venue_id":data["response"]["checkin"]["venue"]["id"],
+                      "name":data["response"]["checkin"]["venue"]["name"],
+                      "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
+                      "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
+                      "city":data["response"]["checkin"]["venue"]["location"]["city"],
+                      "country":data["response"]["checkin"]["venue"]["location"]["country"],
+                      "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
+                      "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
+                    }
+                except Exception, e:
+                    if "checkin" not in str(e):
+                        if "city" in str(e):
+                            venue = {
+                              "venue_id":data["response"]["checkin"]["venue"]["id"],
+                              "name":data["response"]["checkin"]["venue"]["name"],
+                              "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
+                              "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
+                              # "city":data["response"]["checkin"]["venue"]["location"]["city"],
+                              "country":data["response"]["checkin"]["venue"]["location"]["country"],
+                              "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
+                              "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
+                            }
+                        elif "country" in str(e):
+                            venue = {
+                              "venue_id":data["response"]["checkin"]["venue"]["id"],
+                              "name":data["response"]["checkin"]["venue"]["name"],
+                              "lat":data["response"]["checkin"]["venue"]["location"]["lat"],
+                              "lng":data["response"]["checkin"]["venue"]["location"]["lng"],
+                              # "city":data["response"]["checkin"]["venue"]["location"]["city"],
+                              # "country":data["response"]["checkin"]["venue"]["location"]["country"],
+                              "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
+                              "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
+                            }
 
-            print venue.items()
-            # venue_cols = ', '.join(str(v) for v in venue.keys())
-            # venue_values = '"'+'","'.join(str(v) for v in venue.values())+'"'
-            # venue_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_venue', venue_cols, venue_values)
-            # cursor.execute(venue_sql)
-            # conn.commit()
+                print venue.items()
+                venue_cols = ', '.join(str(v) for v in venue.keys())
+                venue_values = '"'+'","'.join(str(v) for v in venue.values())+'"'
+                venue_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_venue', venue_cols, venue_values)
+                cursor.execute(venue_sql)
+                conn.commit()
 
             # Avoid being blokced by foursquare
             time.sleep(1)
