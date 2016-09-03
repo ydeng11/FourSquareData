@@ -63,12 +63,17 @@ class CustomStreamListener(tweepy.StreamListener):
           # if "United States" in all_data:
             tweet = all_data["text"]
             contents = tweet.split()
-            for content in contents:
-                if content.startswith("https"):
-                    url = requests.get(content).url
-                    if "swarm" in url:
-                        fs_id = url.split("/")[-1]
-                        correct = True
+            correct = False
+            try:
+                for content in contents:
+                    if content.startswith("https"):
+                        url = requests.get(content).url
+                        if "swarm" in url:
+                            fs_id = url.split("/")[-1]
+                            correct = True
+            except:
+                Exception
+
             if correct:
                 # Update the auth_token
                 today = datetime.date.today()
@@ -83,6 +88,7 @@ class CustomStreamListener(tweepy.StreamListener):
               # print data
 
                 #Sometimes the data is not complete, but lastName, city and country are the most frequently absent data
+                user_infor = False #Control user definition, otherwise the user will be referenced before assignment
                 try:
                     user = {
                         "user_id":data["response"]["checkin"]["user"]["id"],
@@ -91,6 +97,7 @@ class CustomStreamListener(tweepy.StreamListener):
                         "gender":data["response"]["checkin"]["user"]["gender"],
                         "venue_id": data["response"]["checkin"]["venue"]["id"]
                     }
+                    user_infor = True
                 except Exception, e:
                     if "checkin" not in str(e):
                         if "lastName" in str(e):
@@ -101,12 +108,16 @@ class CustomStreamListener(tweepy.StreamListener):
                               "gender":data["response"]["checkin"]["user"]["gender"],
                               "venue_id": data["response"]["checkin"]["venue"]["id"]
                             }
-                print user.items()
-                user_cols = ', '.join(str(v) for v in user.keys())
-                user_values = '"'+'","'.join(str(v) for v in user.values())+'"'
-                user_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_user', user_cols, user_values)
-                cursor.execute(user_sql)
-                conn.commit()
+                            user_infor = True
+                if user_infor:
+                    print user.items()
+                    user_cols = ', '.join(str(v) for v in user.keys())
+                    user_values = '"'+'","'.join(str(v) for v in user.values())+'"'
+                    user_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_user', user_cols, user_values)
+                    cursor.execute(user_sql)
+                    conn.commit()
+
+                venue_infor = False
                 try:
                     venue = {
                       "venue_id":data["response"]["checkin"]["venue"]["id"],
@@ -118,6 +129,7 @@ class CustomStreamListener(tweepy.StreamListener):
                       "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
                       "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
                     }
+                    venue_infor = True
                 except Exception, e:
                     if "checkin" not in str(e):
                         if "city" in str(e):
@@ -131,6 +143,7 @@ class CustomStreamListener(tweepy.StreamListener):
                               "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
                               "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
                             }
+                            venue_infor = True
                         elif "country" in str(e):
                             venue = {
                               "venue_id":data["response"]["checkin"]["venue"]["id"],
@@ -142,13 +155,14 @@ class CustomStreamListener(tweepy.StreamListener):
                               "categories":data["response"]["checkin"]["venue"]["categories"][0]["name"],
                               "checkinsCount":data["response"]["checkin"]["venue"]["stats"]["checkinsCount"]
                             }
-
-                print venue.items()
-                venue_cols = ', '.join(str(v) for v in venue.keys())
-                venue_values = '"'+'","'.join(str(v) for v in venue.values())+'"'
-                venue_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_venue', venue_cols, venue_values)
-                cursor.execute(venue_sql)
-                conn.commit()
+                            venue_infor = True
+                if venue_infor:
+                    print venue.items()
+                    venue_cols = ', '.join(str(v) for v in venue.keys())
+                    venue_values = '"'+'","'.join(str(v) for v in venue.values())+'"'
+                    venue_sql = "INSERT INTO %s (%s) VALUES (%s) ON DUPLICATE KEY UPDATE count=count+1" % ('fs_venue', venue_cols, venue_values)
+                    cursor.execute(venue_sql)
+                    conn.commit()
 
             # Avoid being blokced by foursquare
             time.sleep(1)
